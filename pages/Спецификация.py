@@ -113,9 +113,9 @@ def show_totals(df):
     total_discounted = rad_discounted + br_discounted
     
     # Технические параметры
-    total_power = rad_df['Мощность, Вт'].sum() * rad_df['Количество'].sum()
-    total_weight = df['Вес, кг'].sum() * df['Количество'].sum()
-    total_volume = df['Объем, м3'].sum() * df['Количество'].sum()
+    total_power = (rad_df['Мощность, Вт'] * rad_df['Количество']).sum()
+    total_weight = (df['Вес, кг'] * df['Количество']).sum()
+    total_volume = (df['Объем, м3'] * df['Количество']).sum()
     
     # Отображение итогов
     st.subheader("📊 Итоги")
@@ -189,11 +189,11 @@ def show_quick_copy(df):
     # Показать скопированные данные
     if 'copied_articles' in st.session_state:
         with st.expander("📋 Просмотреть скопированные артикулы"):
-            st.text_area("Артикулы", st.session_state.copied_articles, height=150)
+            st.text_area("Артикулы", st.session_state.copied_articles, height=150, key="articles_area")
     
     if 'copied_quantities' in st.session_state:
         with st.expander("📋 Просмотреть скопированные количества"):
-            st.text_area("Количества", st.session_state.copied_quantities, height=150)
+            st.text_area("Количества", st.session_state.copied_quantities, height=150, key="quantities_area")
 
 def export_specification_to_excel(df):
     """Экспорт спецификации в Excel"""
@@ -208,7 +208,8 @@ def export_specification_to_excel(df):
                 label="📥 Скачать Excel файл",
                 data=file_data,
                 file_name=filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="excel_download"
             )
     except Exception as e:
         st.error(f"❌ Ошибка экспорта в Excel: {e}")
@@ -226,7 +227,8 @@ def export_specification_to_csv(df):
                 label="📥 Скачать CSV файл",
                 data=file_data,
                 file_name=filename,
-                mime="text/csv"
+                mime="text/csv",
+                key="csv_download"
             )
     except Exception as e:
         st.error(f"❌ Ошибка экспорта в CSV: {e}")

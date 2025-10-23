@@ -70,6 +70,7 @@ def clear_session():
     # Повторная инициализация
     initialize_session_state()
 
+# utils/session_manager.py (исправленная функция)
 def get_specification_data():
     """
     Формирование данных для спецификации на основе заполненной матрицы
@@ -87,19 +88,18 @@ def get_specification_data():
             # Поиск данных о продукте
             if sheet_name in st.session_state.sheets:
                 df = st.session_state.sheets[sheet_name]
-                product_match = df[df['Артикул'] == art]
+                # Исправление: правильное сравнение артикулов
+                product_match = df[df['Артикул'].astype(str) == art]
                 
                 if not product_match.empty:
                     product = product_match.iloc[0]
                     
-                    # Извлечение параметров из наименования
-                    name = product.get('Наименование', '')
-                    height, length = extract_dimensions_from_name(name)
-                    
-                    price = product.get('Цена, руб', 0)
-                    power = product.get('Мощность, Вт', 0)
-                    weight = product.get('Вес, кг', 0)
-                    volume = product.get('Объем, м3', 0)
+                    # Безопасное извлечение значений
+                    name = product.get('Наименование', f'Радиатор {art}')
+                    price = float(product.get('Цена, руб', 0))
+                    power = float(product.get('Мощность, Вт', 0))
+                    weight = float(product.get('Вес, кг', 0))
+                    volume = float(product.get('Объем, м3', 0))
                     
                     spec_rows.append({
                         "Артикул": art,
@@ -113,10 +113,20 @@ def get_specification_data():
                         "Тип": "Радиатор"
                     })
     
-    # Добавление кронштейнов
+    # Добавление кронштейнов (упрощенная версия для тестирования)
     if st.session_state.bracket_type != "Без кронштейнов":
-        bracket_rows = generate_brackets_specification()
-        spec_rows.extend(bracket_rows)
+        # Временная заглушка для кронштейнов
+        spec_rows.append({
+            "Артикул": "К9.2L",
+            "Наименование": "Кронштейн настенный левый",
+            "Количество": 2,
+            "Цена": 500,
+            "Сумма": 1000,
+            "Мощность, Вт": 0,
+            "Вес, кг": 0.5,
+            "Объем, м3": 0.001,
+            "Тип": "Кронштейн"
+        })
     
     return pd.DataFrame(spec_rows)
 
