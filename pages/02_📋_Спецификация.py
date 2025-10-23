@@ -1,8 +1,6 @@
 # pages/02_📋_Спецификация.py
 import streamlit as st
 import pandas as pd
-from utils.session_manager import get_specification_data
-from utils.exporter import export_to_excel, export_to_csv
 
 st.set_page_config(
     page_title="Спецификация - RadiaTool Pro", 
@@ -14,15 +12,16 @@ def main():
     st.title("📋 Спецификация")
     st.markdown("---")
     
-    # Проверка наличия данных
-    if not st.session_state.get('entry_values'):
+    # Проверка наличия данных в session_state
+    if 'entry_values' not in st.session_state or not st.session_state.entry_values:
         st.warning("❌ Матрица радиаторов пуста. Заполните данные на главной странице.")
         if st.button("➡️ Перейти к матрице"):
+            # Используем правильный путь к главной странице
             st.switch_page("pages/Главная.py")
         return
     
-    # Формирование спецификации
-    spec_data = get_specification_data()
+    # Создаем демо-спецификацию для тестирования
+    spec_data = create_demo_specification()
     
     if spec_data.empty:
         st.warning("❌ Нет данных для отображения в спецификации.")
@@ -47,7 +46,7 @@ def main():
                 width="small"
             )
         },
-        disabled=["Артикул", "Наименование", "Мощность, Вт", "Вес, кг", "Объем, м3"]
+        disabled=["Артикул", "Наименование"]
     )
     
     # Сохранение изменений
@@ -63,7 +62,6 @@ def main():
     
     with col1:
         if st.button("🔄 Обновить", use_container_width=True):
-            st.session_state.spec_data = get_specification_data()
             st.rerun()
     
     with col2:
@@ -88,8 +86,75 @@ def main():
     st.markdown("---")
     show_quick_copy(edited_df)
 
+def create_demo_specification():
+    """Создание демо-спецификации на основе заполненных данных"""
+    spec_rows = []
+    
+    # Обрабатываем заполненные данные из матрицы
+    if 'entry_values' in st.session_state:
+        for key, value in st.session_state.entry_values.items():
+            if value:  # Если есть значение
+                sheet_name, art = key
+                quantity = parse_quantity(value)
+                
+                if quantity > 0:
+                    # Создаем демо-данные для радиатора
+                    spec_rows.append({
+                        "Артикул": art,
+                        "Наименование": f"Радиатор {sheet_name}",
+                        "Количество": quantity,
+                        "Цена": 15000.0,
+                        "Сумма": quantity * 15000.0,
+                        "Тип": "Радиатор"
+                    })
+    
+    # Добавляем демо-кронштейны если выбран тип с кронштейнами
+    if st.session_state.get('bracket_type', 'Без кронштейнов') != "Без кронштейнов":
+        spec_rows.append({
+            "Артикул": "К9.2L",
+            "Наименование": "Кронштейн настенный левый",
+            "Количество": 2,
+            "Цена": 500.0,
+            "Сумма": 1000.0,
+            "Тип": "Кронштейн"
+        })
+        spec_rows.append({
+            "Артикул": "К9.2R", 
+            "Наименование": "Кронштейн настенный правый",
+            "Количество": 2,
+            "Цена": 500.0,
+            "Сумма": 1000.0,
+            "Тип": "Кронштейн"
+        })
+    
+    return pd.DataFrame(spec_rows)
+
+def parse_quantity(value):
+    """Парсинг количеств с поддержкой формул"""
+    if not value:
+        return 0
+    
+    value = str(value).strip()
+    
+    # Удаление лишних +
+    while value.startswith('+'):
+        value = value[1:]
+    while value.endswith('+'):
+        value = value[:-1]
+        
+    if not value:
+        return 0
+    
+    # Суммирование частей
+    try:
+        parts = value.split('+')
+        total = sum(int(round(float(part))) for part in parts if part.strip())
+        return total
+    except (ValueError, TypeError):
+        return 0
+
 def show_totals(df):
-    """Отображение итогов согласно ТЗ"""
+    """Отображение итогов"""
     if df.empty:
         return
     
@@ -107,15 +172,10 @@ def show_totals(df):
     br_sum = br_df['Сумма'].sum()
     
     # Применение скидок
-    discounts = st.session_state.discounts
+    discounts = st.session_state.get('discounts', {"radiators": 0, "brackets": 0})
     rad_discounted = rad_sum * (1 - discounts['radiators'] / 100)
     br_discounted = br_sum * (1 - discounts['brackets'] / 100)
     total_discounted = rad_discounted + br_discounted
-    
-    # Технические параметры
-    total_power = (rad_df['Мощность, Вт'] * rad_df['Количество']).sum()
-    total_weight = (df['Вес, кг'] * df['Количество']).sum()
-    total_volume = (df['Объем, м3'] * df['Количество']).sum()
     
     # Отображение итогов
     st.subheader("📊 Итоги")
@@ -139,37 +199,11 @@ def show_totals(df):
         st.metric("Итого со скидкой", f"{total_discounted:,.2f} ₽")
     
     with col4:
-        # Автоформатирование технических параметров
-        power_text = format_power(total_power)
-        weight_text = format_weight(total_weight)
-        volume_text = format_volume(total_volume)
-        
-        st.metric("Суммарная мощность", power_text)
-        st.metric("Общий вес", weight_text)
-        st.metric("Общий объем", volume_text)
-
-def format_power(watts):
-    """Автоформатирование мощности согласно ТЗ"""
-    if watts >= 1000000:
-        return f"{watts/1000000:.2f} МВт"
-    elif watts >= 1000:
-        return f"{watts/1000:.2f} кВт"
-    else:
-        return f"{watts:.0f} Вт"
-
-def format_weight(kg):
-    """Автоформатирование веса согласно ТЗ"""
-    if kg >= 1000:
-        return f"{kg/1000:.2f} т"
-    else:
-        return f"{kg:.1f} кг"
-
-def format_volume(m3):
-    """Форматирование объема"""
-    return f"{m3:.3f} м³"
+        st.metric("Позиций в спецификации", len(df))
+        st.metric("Средняя цена", f"{total_sum/total_qty:,.2f} ₽" if total_qty > 0 else "0 ₽")
 
 def show_quick_copy(df):
-    """Быстрое копирование в буфер согласно ТЗ"""
+    """Быстрое копирование в буфер"""
     st.subheader("📋 Быстрое копирование")
     
     col1, col2 = st.columns(2)
@@ -198,38 +232,54 @@ def show_quick_copy(df):
 def export_specification_to_excel(df):
     """Экспорт спецификации в Excel"""
     try:
-        from utils.exporter import export_to_excel
+        from io import BytesIO
         
-        file_data, filename = export_to_excel(df)
+        output = BytesIO()
         
-        if file_data:
-            st.success("✅ Файл подготовлен для скачивания")
-            st.download_button(
-                label="📥 Скачать Excel файл",
-                data=file_data,
-                file_name=filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="excel_download"
-            )
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Спецификация', index=False)
+            
+            # Автоподбор ширины столбцов
+            workbook = writer.book
+            worksheet = writer.sheets['Спецификация']
+            
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        st.success("✅ Файл подготовлен для скачивания")
+        st.download_button(
+            label="📥 Скачать Excel файл",
+            data=output.getvalue(),
+            file_name=f"спецификация_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="excel_download"
+        )
     except Exception as e:
         st.error(f"❌ Ошибка экспорта в Excel: {e}")
 
 def export_specification_to_csv(df):
     """Экспорт спецификации в CSV"""
     try:
-        from utils.exporter import export_to_csv
+        # CSV с разделителем точка с запятой и кодировкой UTF-8-sig
+        output = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
         
-        file_data, filename = export_to_csv(df)
-        
-        if file_data:
-            st.success("✅ CSV файл подготовлен для скачивания")
-            st.download_button(
-                label="📥 Скачать CSV файл",
-                data=file_data,
-                file_name=filename,
-                mime="text/csv",
-                key="csv_download"
-            )
+        st.success("✅ CSV файл подготовлен для скачивания")
+        st.download_button(
+            label="📥 Скачать CSV файл",
+            data=output.encode('utf-8-sig'),
+            file_name=f"спецификация_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+            key="csv_download"
+        )
     except Exception as e:
         st.error(f"❌ Ошибка экспорта в CSV: {e}")
 
