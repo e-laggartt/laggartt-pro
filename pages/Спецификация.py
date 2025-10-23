@@ -1,7 +1,8 @@
 # pages/02_📋_Спецификация.py
 import streamlit as st
 import pandas as pd
-from utils.calculator import parse_quantity, calculate_wall_brackets
+from utils.session_manager import get_specification_data
+from utils.exporter import export_to_excel, export_to_csv
 
 st.set_page_config(
     page_title="Спецификация - RadiaTool Pro", 
@@ -17,11 +18,11 @@ def main():
     if not st.session_state.get('entry_values'):
         st.warning("❌ Матрица радиаторов пуста. Заполните данные на главной странице.")
         if st.button("➡️ Перейти к матрице"):
-            st.switch_page("app.py")
+            st.switch_page("pages/Главная.py")
         return
     
     # Формирование спецификации
-    spec_data = generate_specification()
+    spec_data = get_specification_data()
     
     if spec_data.empty:
         st.warning("❌ Нет данных для отображения в спецификации.")
@@ -38,164 +39,197 @@ def main():
         column_config={
             "Артикул": st.column_config.TextColumn(width="medium"),
             "Наименование": st.column_config.TextColumn(width="large"),
-            "Количество": st.column_config.NumberColumn(width="small"),
+            "Количество": st.column_config.NumberColumn(width="small", min_value=0),
             "Цена": st.column_config.NumberColumn(format="%.2f ₽"),
-            "Сумма": st.column_config.NumberColumn(format="%.2f ₽")
-        }
+            "Сумма": st.column_config.NumberColumn(format="%.2f ₽"),
+            "Тип": st.column_config.SelectboxColumn(
+                options=["Радиатор", "Кронштейн"],
+                width="small"
+            )
+        },
+        disabled=["Артикул", "Наименование", "Мощность, Вт", "Вес, кг", "Объем, м3"]
     )
     
+    # Сохранение изменений
+    if not edited_df.equals(spec_data):
+        st.session_state.spec_data = edited_df
+        st.success("✅ Изменения сохранены!")
+    
     # Кнопки управления
-    col1, col2, col3 = st.columns(3)
+    st.markdown("---")
+    st.subheader("🚀 Управление спецификацией")
+    
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        if st.button("🔄 Обновить спецификацию", use_container_width=True):
-            st.session_state.spec_data = edited_df
+        if st.button("🔄 Обновить", use_container_width=True):
+            st.session_state.spec_data = get_specification_data()
             st.rerun()
     
     with col2:
-        if st.button("📥 Экспорт в Excel", use_container_width=True):
-            export_to_excel(edited_df)
+        if st.button("📥 Excel", use_container_width=True):
+            export_specification_to_excel(edited_df)
     
     with col3:
-        if st.button("🗑️ Очистить спецификацию", type="secondary", use_container_width=True):
-            st.session_state.spec_data = pd.DataFrame()
+        if st.button("📄 CSV", use_container_width=True):
+            export_specification_to_csv(edited_df)
+    
+    with col4:
+        if st.button("🗑️ Очистить", type="secondary", use_container_width=True):
             st.session_state.entry_values = {}
+            st.session_state.spec_data = pd.DataFrame()
             st.rerun()
     
     # Итоги
     st.markdown("---")
     show_totals(edited_df)
-
-def generate_specification():
-    """Формирование спецификации на основе заполненной матрицы"""
     
-    # Временные данные (заглушка)
-    spec_rows = []
-    
-    # Обработка заполненных ячеек матрицы
-    for key, value in st.session_state.entry_values.items():
-        if value and parse_quantity(value) > 0:
-            height, length = key.split('_')
-            qty = parse_quantity(value)
-            
-            # Генерация артикула и наименования (заглушка)
-            art = f"VK-{st.session_state.radiator_type}-{height}-{length}"
-            name = f"Радиатор {st.session_state.connection} тип {st.session_state.radiator_type} {height}x{length}"
-            price = 15000  # Заглушка
-            
-            spec_rows.append({
-                "Артикул": art,
-                "Наименование": name,
-                "Количество": qty,
-                "Цена": price,
-                "Сумма": qty * price
-            })
-    
-    # Добавление кронштейнов
-    if st.session_state.bracket_type != "Без":
-        bracket_rows = generate_brackets_spec()
-        spec_rows.extend(bracket_rows)
-    
-    return pd.DataFrame(spec_rows)
-
-def generate_brackets_spec():
-    """Генерация спецификации кронштейнов"""
-    bracket_rows = []
-    
-    # Расчет кронштейнов для каждого радиатора
-    for key, value in st.session_state.entry_values.items():
-        if value and parse_quantity(value) > 0:
-            height, length = map(int, key.split('_'))
-            qty = parse_quantity(value)
-            
-            if st.session_state.bracket_type == "Настенные":
-                brackets = calculate_wall_brackets(
-                    st.session_state.radiator_type,
-                    length, height, qty
-                )
-                
-                for art, br_qty in brackets:
-                    price = 500  # Заглушка
-                    bracket_rows.append({
-                        "Артикул": art,
-                        "Наименование": f"Кронштейн настенный {art}",
-                        "Количество": br_qty,
-                        "Цена": price,
-                        "Сумма": br_qty * price
-                    })
-    
-    return bracket_rows
+    # Быстрое копирование
+    st.markdown("---")
+    show_quick_copy(edited_df)
 
 def show_totals(df):
-    """Отображение итогов"""
+    """Отображение итогов согласно ТЗ"""
     if df.empty:
         return
     
+    # Основные итоги
     total_qty = df['Количество'].sum()
     total_sum = df['Сумма'].sum()
     
+    # Разделение на радиаторы и кронштейны
+    rad_df = df[df['Тип'] == 'Радиатор']
+    br_df = df[df['Тип'] == 'Кронштейн']
+    
+    rad_qty = rad_df['Количество'].sum()
+    rad_sum = rad_df['Сумма'].sum()
+    br_qty = br_df['Количество'].sum() 
+    br_sum = br_df['Сумма'].sum()
+    
     # Применение скидок
     discounts = st.session_state.discounts
-    rad_sum = df[~df['Наименование'].str.contains('Кронштейн', na=False)]['Сумма'].sum()
-    br_sum = df[df['Наименование'].str.contains('Кронштейн', na=False)]['Сумма'].sum()
-    
     rad_discounted = rad_sum * (1 - discounts['radiators'] / 100)
     br_discounted = br_sum * (1 - discounts['brackets'] / 100)
     total_discounted = rad_discounted + br_discounted
     
+    # Технические параметры
+    total_power = rad_df['Мощность, Вт'].sum() * rad_df['Количество'].sum()
+    total_weight = df['Вес, кг'].sum() * df['Количество'].sum()
+    total_volume = df['Объем, м3'].sum() * df['Количество'].sum()
+    
     # Отображение итогов
+    st.subheader("📊 Итоги")
+    
+    # Финансовые итоги
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric("Общее количество", f"{total_qty:.0f} шт")
+        st.metric("Радиаторы", f"{rad_qty:.0f} шт")
+        st.metric("Кронштейны", f"{br_qty:.0f} шт")
     
     with col2:
         st.metric("Общая стоимость", f"{total_sum:,.2f} ₽")
+        st.metric("Стоимость радиаторов", f"{rad_sum:,.2f} ₽")
+        st.metric("Стоимость кронштейнов", f"{br_sum:,.2f} ₽")
     
     with col3:
         st.metric("Скидка радиаторы", f"-{discounts['radiators']}%")
+        st.metric("Скидка кронштейны", f"-{discounts['brackets']}%")
+        st.metric("Итого со скидкой", f"{total_discounted:,.2f} ₽")
     
     with col4:
-        st.metric("Итого со скидкой", f"{total_discounted:,.2f} ₽")
+        # Автоформатирование технических параметров
+        power_text = format_power(total_power)
+        weight_text = format_weight(total_weight)
+        volume_text = format_volume(total_volume)
+        
+        st.metric("Суммарная мощность", power_text)
+        st.metric("Общий вес", weight_text)
+        st.metric("Общий объем", volume_text)
 
-def export_to_excel(df):
-    """Экспорт в Excel"""
+def format_power(watts):
+    """Автоформатирование мощности согласно ТЗ"""
+    if watts >= 1000000:
+        return f"{watts/1000000:.2f} МВт"
+    elif watts >= 1000:
+        return f"{watts/1000:.2f} кВт"
+    else:
+        return f"{watts:.0f} Вт"
+
+def format_weight(kg):
+    """Автоформатирование веса согласно ТЗ"""
+    if kg >= 1000:
+        return f"{kg/1000:.2f} т"
+    else:
+        return f"{kg:.1f} кг"
+
+def format_volume(m3):
+    """Форматирование объема"""
+    return f"{m3:.3f} м³"
+
+def show_quick_copy(df):
+    """Быстрое копирование в буфер согласно ТЗ"""
+    st.subheader("📋 Быстрое копирование")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("📋 Скопировать артикулы", use_container_width=True):
+            articles = "\n".join(df['Артикул'].astype(str))
+            st.session_state.copied_articles = articles
+            st.success("✅ Артикулы скопированы в буфер!")
+    
+    with col2:
+        if st.button("📋 Скопировать количества", use_container_width=True):
+            quantities = "\n".join(df['Количество'].astype(str))
+            st.session_state.copied_quantities = quantities
+            st.success("✅ Количества скопированы в буфер!")
+    
+    # Показать скопированные данные
+    if 'copied_articles' in st.session_state:
+        with st.expander("📋 Просмотреть скопированные артикулы"):
+            st.text_area("Артикулы", st.session_state.copied_articles, height=150)
+    
+    if 'copied_quantities' in st.session_state:
+        with st.expander("📋 Просмотреть скопированные количества"):
+            st.text_area("Количества", st.session_state.copied_quantities, height=150)
+
+def export_specification_to_excel(df):
+    """Экспорт спецификации в Excel"""
     try:
-        from io import BytesIO
-        import openpyxl
+        from utils.exporter import export_to_excel
         
-        output = BytesIO()
+        file_data, filename = export_to_excel(df)
         
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Спецификация', index=False)
-            
-            # Настройка форматирования
-            workbook = writer.book
-            worksheet = writer.sheets['Спецификация']
-            
-            # Автоподбор ширины столбцов
-            for column in worksheet.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                worksheet.column_dimensions[column_letter].width = adjusted_width
-        
-        st.success("✅ Файл подготовлен для скачивания")
-        st.download_button(
-            label="📥 Скачать Excel файл",
-            data=output.getvalue(),
-            file_name=f"спецификация_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-        
+        if file_data:
+            st.success("✅ Файл подготовлен для скачивания")
+            st.download_button(
+                label="📥 Скачать Excel файл",
+                data=file_data,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
     except Exception as e:
-        st.error(f"❌ Ошибка экспорта: {e}")
+        st.error(f"❌ Ошибка экспорта в Excel: {e}")
+
+def export_specification_to_csv(df):
+    """Экспорт спецификации в CSV"""
+    try:
+        from utils.exporter import export_to_csv
+        
+        file_data, filename = export_to_csv(df)
+        
+        if file_data:
+            st.success("✅ CSV файл подготовлен для скачивания")
+            st.download_button(
+                label="📥 Скачать CSV файл",
+                data=file_data,
+                file_name=filename,
+                mime="text/csv"
+            )
+    except Exception as e:
+        st.error(f"❌ Ошибка экспорта в CSV: {e}")
 
 if __name__ == "__main__":
     main()
