@@ -144,3 +144,85 @@ def extract_parameters(match):
         'height': int(match.group(2)) if match.groups() >= 2 else None,
         'length': int(match.group(3)) if match.groups() >= 3 else None
     }
+    # utils/calculator.py (дополнения)
+
+
+def parse_competitor_name(name):
+    """
+    Парсинг наименований конкурентов для автоматического определения параметров
+    """
+    name_str = str(name).upper()
+    
+    patterns = [
+        # VC 22-500-600, VK 30-600-1200
+        r'(V[KC])\s*(\d+)[-\s](\d+)[-\s](\d+)',
+        # ЛК 11-504, ЛК 11-504-900
+        r'[ЛL][КK]\s*(\d+)[-\s](\d+)(?:[-\s](\d+))?',
+        # тип 10-400-1000
+        r'ТИП\s*(\d+)[-\s](\d+)[-\s](\d+)',
+        # 10-400-1000
+        r'(\d+)[-\s](\d+)[-\s](\d+)'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, name_str)
+        if match:
+            return extract_parameters_from_match(match, pattern)
+    
+    return None
+
+def extract_parameters_from_match(match, pattern):
+    """
+    Извлечение параметров из regex match
+    """
+    groups = match.groups()
+    
+    if 'V' in pattern:
+        # VK/VC формат: VK 30-600-1200
+        connection_map = {
+            'VK': 'VK-правое',
+            'VC': 'VK-левое'
+        }
+        return {
+            'type': groups[1] if len(groups) >= 2 else None,
+            'height': int(groups[2]) if len(groups) >= 3 and groups[2] else None,
+            'length': int(groups[3]) if len(groups) >= 4 and groups[3] else None,
+            'connection': connection_map.get(groups[0], 'VK-правое')
+        }
+    else:
+        # Другие форматы
+        return {
+            'type': groups[0] if groups[0] else None,
+            'height': int(groups[1]) if len(groups) >= 2 and groups[1] else None,
+            'length': int(groups[2]) if len(groups) >= 3 and groups[2] else None,
+            'connection': 'K-боковое'
+        }
+
+def find_meteor_equivalent(parameters, sheets_data):
+    """
+    Поиск эквивалента METEOR по параметрам
+    """
+    if not parameters:
+        return None
+    
+    for sheet_name, df in sheets_data.items():
+        # Проверка соответствия подключения
+        sheet_connection = sheet_name.split()[0]  # "VK-правое" -> "VK-правое"
+        if parameters.get('connection') == sheet_connection:
+            # Поиск по размерам в наименованиях
+            height = parameters.get('height')
+            length = parameters.get('length')
+            
+            if height and length:
+                pattern = f"/{height}мм/{length}мм"
+                matches = df[df['Наименование'].str.contains(pattern, na=False)]
+                
+                if not matches.empty:
+                    product = matches.iloc[0]
+                    return {
+                        'art': product['Артикул'],
+                        'name': product['Наименование'],
+                        'sheet': sheet_name
+                    }
+    
+    return None
