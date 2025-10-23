@@ -1,34 +1,112 @@
-# pages/Главная.py
+# pages/01_🏠_Главная.py
 import streamlit as st
 import pandas as pd
-from utils.calculator import parse_quantity
-from utils.session_manager import initialize_session_state
+import os
+
+st.set_page_config(
+    page_title="Главная - RadiaTool Pro",
+    page_icon="🏠",
+    layout="wide"
+)
+
+def parse_quantity(value):
+    """Парсинг количеств с поддержкой формул"""
+    if not value:
+        return 0
+    
+    value = str(value).strip()
+    
+    # Удаление лишних +
+    while value.startswith('+'):
+        value = value[1:]
+    while value.endswith('+'):
+        value = value[:-1]
+        
+    if not value:
+        return 0
+    
+    # Суммирование частей
+    try:
+        parts = value.split('+')
+        total = sum(int(round(float(part))) for part in parts if part.strip())
+        return total
+    except (ValueError, TypeError):
+        return 0
+
+def load_radiator_data():
+    """Загрузка реальных данных из Excel файла"""
+    try:
+        file_path = "data/Матрица.xlsx"
+        if os.path.exists(file_path):
+            # Чтение всех листов Excel
+            sheets_dict = pd.read_excel(file_path, sheet_name=None, engine='openpyxl')
+            
+            # Обработка данных
+            processed_sheets = {}
+            for sheet_name, df in sheets_dict.items():
+                # Приведение артикулов к строковому типу
+                if 'Артикул' in df.columns:
+                    df['Артикул'] = df['Артикул'].astype(str)
+                
+                # Заполнение пропущенных числовых значений
+                numeric_columns = ['Мощность, Вт', 'Вес, кг', 'Объем, м3', 'Цена, руб']
+                for col in numeric_columns:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                
+                processed_sheets[sheet_name] = df
+            
+            return processed_sheets
+        else:
+            st.error(f"❌ Файл {file_path} не найден")
+            return {}
+            
+    except Exception as e:
+        st.error(f"❌ Ошибка загрузки данных: {e}")
+        return {}
+
+def find_radiator_by_size(df, height, length):
+    """Поиск радиатора по высоте и длине в реальных данных"""
+    try:
+        # Паттерн для поиска в наименовании
+        pattern = f"/{height}мм/{length}мм"
+        
+        # Ищем в столбце 'Наименование'
+        for _, row in df.iterrows():
+            name = str(row.get('Наименование', ''))
+            if pattern in name:
+                return row
+        
+        return None
+        
+    except Exception as e:
+        st.error(f"Ошибка поиска радиатора: {e}")
+        return None
 
 def main():
-    # Инициализация состояния
-    try:
-        initialize_session_state()
-    except Exception as e:
-        st.error(f"Ошибка инициализации: {e}")
-        return
-    
     st.title("🏠 Матрица радиаторов")
     
-    # Проверка загрузки данных
-    if 'sheets' not in st.session_state or not st.session_state.sheets:
-        st.error("❌ Данные не загружены. Проверьте наличие файла data/Матрица.xlsx")
-        
-        # Кнопка для принудительной перезагрузки данных
-        if st.button("🔄 Перезагрузить данные"):
-            try:
-                from utils.data_loader import load_radiator_data
-                st.session_state.sheets = load_radiator_data()
-                st.rerun()
-            except Exception as e:
-                st.error(f"Ошибка загрузки данных: {e}")
-        return
+    # Инициализация session_state
+    if 'entry_values' not in st.session_state:
+        st.session_state.entry_values = {}
+    if 'connection' not in st.session_state:
+        st.session_state.connection = "VK-правое"
+    if 'radiator_type' not in st.session_state:
+        st.session_state.radiator_type = "10"
+    if 'bracket_type' not in st.session_state:
+        st.session_state.bracket_type = "Настенные кронштейны"
+    if 'discounts' not in st.session_state:
+        st.session_state.discounts = {"radiators": 0, "brackets": 0}
+    if 'sheets' not in st.session_state:
+        st.session_state.sheets = load_radiator_data()
     
     sheets = st.session_state.sheets
+    
+    # Проверка загрузки данных
+    if not sheets:
+        st.error("❌ Не удалось загрузить данные радиаторов.")
+        st.info("Убедитесь, что файл data/Матрица.xlsx существует и содержит данные.")
+        return
     
     # Боковая панель управления
     with st.sidebar:
@@ -100,7 +178,7 @@ def main():
         st.subheader("⚙️ Настройки")
         show_tooltips = st.checkbox(
             "Показывать подсказки", 
-            value=st.session_state.show_tooltips,
+            value=True,
             key="tooltips_checkbox"
         )
         st.session_state.show_tooltips = show_tooltips
@@ -115,6 +193,13 @@ def main():
             
         if st.button("📋 Перейти к спецификации", type="primary"):
             st.switch_page("pages/02_📋_Спецификация.py")
+        
+        # Информация о данных
+        st.markdown("---")
+        st.subheader("📊 Информация")
+        st.write(f"Загружено листов: {len(sheets)}")
+        total_products = sum(len(df) for df in sheets.values())
+        st.write(f"Всего радиаторов: {total_products}")
     
     # Основная область - матрица радиаторов
     st.header(f"📊 Матрица: {connection} {radiator_type}")
@@ -126,13 +211,12 @@ def main():
         for available_sheet in sheets.keys():
             st.write(f"- {available_sheet}")
         
-        # Если нужный лист не найден, используем первый доступный для демонстрации
+        # Используем первый доступный лист для демонстрации
         if sheets:
             first_sheet = list(sheets.keys())[0]
-            st.info(f"🔧 Используется лист: {first_sheet} для демонстрации")
+            st.info(f"🔧 Используется лист: {first_sheet}")
             df = sheets[first_sheet]
         else:
-            st.error("❌ В данных нет ни одного листа")
             return
     else:
         df = sheets[sheet_name]
@@ -167,7 +251,7 @@ def main():
         # Ячейки матрицы
         for j, height in enumerate(heights):
             with cols[j + 1]:
-                # Поиск радиатора по размерам в данных
+                # Поиск радиатора по размерам в реальных данных
                 product = find_radiator_by_size(df, height, length)
                 
                 if product is not None:
@@ -199,7 +283,7 @@ def main():
                             total_quantity += quantity
                     
                     # Подсказка при наведении
-                    if st.session_state.show_tooltips:
+                    if st.session_state.show_tooltips and product is not None:
                         power = product.get('Мощность, Вт', 'N/A')
                         weight = product.get('Вес, кг', 'N/A')
                         volume = product.get('Объем, м3', 'N/A')
@@ -221,7 +305,7 @@ def main():
                                 st.markdown(f"**Сумма:** {qty * float(price or 0):.2f} ₽")
                 
                 else:
-                    # Если радиатор не найден
+                    # Если радиатор не найден в реальных данных
                     st.markdown("—")
                     if st.session_state.show_tooltips:
                         st.markdown("", help="Радиатор не найден в базе данных")
@@ -245,45 +329,11 @@ def main():
         # Инструкция
         with st.expander("📝 Как работать с матрицей?"):
             st.markdown("""
-            1. **Выберите параметры** в боковой панели:
-               - Подключение (VK-правое, VK-левое, K-боковое)
-               - Тип радиатора (10, 11, 20, 21, 22, 30, 33)
-               - Тип крепления
-            
-            2. **Заполните матрицу**:
-               - Вводите количества в ячейки соответствующих размеров
-               - Используйте `+` для суммирования: `1+2+3`
-               - Только цифры и знак `+`
-            
-            3. **Перейдите к спецификации** для просмотра результатов
+            1. **Выберите параметры** в боковой панели
+            2. **Заполните матрицу** - вводите количества в ячейки
+            3. **Используйте +** для суммирования: `1+2+3`
+            4. **Перейдите к спецификации** для просмотра результатов
             """)
-
-def find_radiator_by_size(df, height, length):
-    """
-    Поиск радиатора по высоте и длине в DataFrame
-    """
-    try:
-        # Ищем в столбце 'Наименование' паттерн с размерами
-        pattern = f"/{height}мм/{length}мм"
-        
-        # Проверяем все строки
-        for _, row in df.iterrows():
-            name = str(row.get('Наименование', ''))
-            if pattern in name:
-                return row
-        
-        # Альтернативный поиск - по артикулу или другим полям
-        for _, row in df.iterrows():
-            art = str(row.get('Артикул', ''))
-            # Если в артикуле есть размеры
-            if f"-{height}-{length}" in art or f"/{height}/{length}" in art:
-                return row
-                
-        return None
-        
-    except Exception as e:
-        st.error(f"Ошибка поиска радиатора: {e}")
-        return None
 
 if __name__ == "__main__":
     main()
