@@ -1,7 +1,6 @@
 # utils/data_loader.py
 import pandas as pd
 import streamlit as st
-import openpyxl
 
 @st.cache_data
 def load_radiator_data():
@@ -34,7 +33,16 @@ def load_radiator_data():
         
     except Exception as e:
         st.error(f"❌ Ошибка загрузки данных: {e}")
+        # Возвращаем пустой словарь вместо None
         return {}
+
+def load_radiator_matrix(connection, radiator_type):
+    """
+    Совместимость со старым кодом - возвращает данные для конкретного листа
+    """
+    sheets = load_radiator_data()
+    sheet_name = f"{connection} {radiator_type}"
+    return sheets.get(sheet_name, pd.DataFrame())
 
 @st.cache_data
 def load_brackets_data():
@@ -54,14 +62,3 @@ def load_brackets_data():
     except Exception as e:
         st.error(f"❌ Ошибка загрузки кронштейнов: {e}")
         return pd.DataFrame()
-
-def get_radiator_by_size(df, height, length):
-    """
-    Поиск радиатора по высоте и длине в DataFrame
-    """
-    pattern = f"/{height}мм/{length}мм"
-    matches = df[df['Наименование'].str.contains(pattern, na=False)]
-    
-    if not matches.empty:
-        return matches.iloc[0]
-    return None

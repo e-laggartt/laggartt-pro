@@ -1,4 +1,4 @@
-# Главная.py
+# pages/Главная.py
 import streamlit as st
 import pandas as pd
 from utils.calculator import parse_quantity, calculate_brackets
@@ -61,25 +61,25 @@ def main():
         )
         st.session_state.bracket_type = bracket_type
         
-        # Скидки
+        # Скидки - ИСПРАВЛЕНА ОШИБКА С ТИПАМИ ДАННЫХ
         st.subheader("💰 Скидки")
         col1, col2 = st.columns(2)
         with col1:
             rad_discount = st.number_input(
                 "Радиаторы, %",
-                min_value=0.0,
-                max_value=100.0,
-                value=st.session_state.discounts["radiators"],
-                step=1.0,
+                min_value=0,  # ИСПРАВЛЕНО: int вместо float
+                max_value=100,
+                value=int(st.session_state.discounts["radiators"]),  # ИСПРАВЛЕНО: приведение к int
+                step=1,
                 key="rad_discount_input"
             )
         with col2:
             br_discount = st.number_input(
                 "Кронштейны, %",
-                min_value=0.0,
-                max_value=100.0,
-                value=st.session_state.discounts["brackets"],
-                step=1.0,
+                min_value=0,  # ИСПРАВЛЕНО: int вместо float
+                max_value=100,
+                value=int(st.session_state.discounts["brackets"]),  # ИСПРАВЛЕНО: приведение к int
+                step=1,
                 key="br_discount_input"
             )
         
@@ -201,7 +201,11 @@ def main():
                             qty = parse_quantity(new_val)
                             tooltip_text += f"\n🔹 Выбрано: {qty} шт"
                         
-                        st.markdown(f"<span title='{tooltip_text}'>ℹ️</span>", unsafe_allow_html=True)
+                        # Простая подсказка вместо сложного HTML
+                        if new_val:
+                            st.caption(f"ℹ️ {art}")
+                        else:
+                            st.caption("ℹ️")
                 else:
                     st.markdown("—")
     

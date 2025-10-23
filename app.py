@@ -1,8 +1,8 @@
 # app.py
 import streamlit as st
 import pandas as pd
-from utils.data_loader import load_radiator_matrix
-from utils.calculator import calculate_brackets, parse_quantity
+from utils.data_loader import load_radiator_data  # ИСПРАВЛЕН ИМПОРТ
+from utils.session_manager import initialize_session_state
 
 # Настройка страницы
 st.set_page_config(
@@ -12,153 +12,78 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Загрузка CSS
-def load_css():
-    with open("assets/style.css") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-
-# Инициализация состояния сессии
-def initialize_session_state():
-    if 'entry_values' not in st.session_state:
-        st.session_state.entry_values = {}
-    if 'connection' not in st.session_state:
-        st.session_state.connection = "VK-правое"
-    if 'radiator_type' not in st.session_state:
-        st.session_state.radiator_type = "10"
-    if 'bracket_type' not in st.session_state:
-        st.session_state.bracket_type = "Настенные"
-    if 'discounts' not in st.session_state:
-        st.session_state.discounts = {"radiators": 0, "brackets": 0}
-    if 'spec_data' not in st.session_state:
-        st.session_state.spec_data = pd.DataFrame()
-
-# Главная функция
 def main():
-    load_css()
+    # Инициализация состояния
     initialize_session_state()
     
     # Заголовок
     st.title("🔧 RadiaTool Pro v2.0")
     st.markdown("---")
     
-    # Боковая панель
-    with st.sidebar:
-        st.image("assets/images/logo.png", width=200)  # Заглушка для лого
-        st.header("🔧 ПАРАМЕТРЫ ПОДБОРА")
+    # Информация о загруженных данных
+    if 'sheets' in st.session_state and st.session_state.sheets:
+        sheet_count = len(st.session_state.sheets)
+        st.success(f"✅ Загружено листов данных: {sheet_count}")
         
-        # Выбор подключения
-        connection = st.radio(
-            "Подключение:",
-            ["VK-правое", "VK-левое", "K-боковое"],
-            index=0
-        )
-        st.session_state.connection = connection
-        
-        # Выбор типа радиатора
-        if connection.startswith("VK"):
-            rad_types = ["10", "11", "30", "33"]
-        else:
-            rad_types = ["10", "11", "20", "21", "22", "30", "33"]
-            
-        radiator_type = st.selectbox("Тип радиатора:", rad_types)
-        st.session_state.radiator_type = radiator_type
-        
-        # Выбор крепления
-        bracket_type = st.radio(
-            "Крепление:",
-            ["Настенные", "Напольные", "Без"]
-        )
-        st.session_state.bracket_type = bracket_type
-        
-        # Скидки
-        st.subheader("Скидки:")
-        rad_discount = st.number_input("Радиаторы (%):", 0, 100, 0)
-        br_discount = st.number_input("Кронштейны (%):", 0, 100, 0)
-        st.session_state.discounts = {
-            "radiators": rad_discount,
-            "brackets": br_discount
-        }
-        
-        st.markdown("---")
-        st.header("📁 ИНСТРУМЕНТЫ")
-        
-        if st.button("📤 Импорт данных"):
+        # Показать доступные листы
+        with st.expander("📋 Просмотреть доступные листы"):
+            for sheet_name in st.session_state.sheets.keys():
+                st.write(f"- {sheet_name}")
+    else:
+        st.warning("⚠️ Данные не загружены. Используются демо-данные.")
+    
+    # Навигация по страницам
+    st.header("🚀 Навигация")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("🏠 Матрица радиаторов", use_container_width=True):
+            st.switch_page("pages/Главная.py")
+    
+    with col2:
+        if st.button("📋 Спецификация", use_container_width=True):
+            st.switch_page("pages/02_📋_Спецификация.py")
+    
+    with col3:
+        if st.button("📊 Импорт данных", use_container_width=True):
             st.switch_page("pages/03_📊_Импорт_данных.py")
-            
-        if st.button("📥 Экспорт спецификации"):
-            st.switch_page("pages/02_📋_Спецификация.py")
-            
-        if st.button("📋 Предпросмотр"):
-            st.switch_page("pages/02_📋_Спецификация.py")
-            
-        if st.button("🗑️ Сброс", type="secondary"):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
-        
-        st.markdown("---")
-        st.header("ℹ️ ИНФОРМАЦИЯ")
-        
-        if st.button("📖 Инструкция"):
+    
+    with col4:
+        if st.button("ℹ️ Информация", use_container_width=True):
             st.switch_page("pages/04_ℹ️_Информация.py")
-            
-        if st.button("💰 Прайс-лист"):
-            st.info("Функция в разработке")
-            
-        if st.button("📄 Сертификаты"):
-            st.info("Функция в разработке")
-            
-        if st.button("🛠️ Поддержка"):
-            st.info("mt@laggartt.ru")
-
-    # Основная область - матрица радиаторов
-    st.header(f"Матрица радиаторов: {connection} {radiator_type}")
     
-    # Загрузка матрицы
-    matrix_data = load_radiator_matrix(connection, radiator_type)
+    # Быстрый старт
+    st.markdown("---")
+    st.header("🎯 Быстрый старт")
     
-    # Создание матрицы ввода
-    heights = [300, 400, 500, 600, 900]
-    lengths = [400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]
+    st.markdown("""
+    1. **Перейдите в "🏠 Матрица радиаторов"** для заполнения данных
+    2. **Выберите параметры** в боковой панели:
+       - Тип подключения (VK-правое, VK-левое, K-боковое)
+       - Тип радиатора (10, 11, 20, 21, 22, 30, 33)
+       - Тип крепления
+    3. **Заполните матрицу** - вводите количества в ячейки
+    4. **Перейдите в "📋 Спецификация"** для просмотра и экспорта
+    """)
     
-    # Сетка для матрицы
-    cols = st.columns(len(lengths) + 1)
+    # Статус системы
+    st.markdown("---")
+    st.header("📊 Статус системы")
     
-    # Заголовки столбцов (длины)
-    with cols[0]:
-        st.write("**Высота** → **Длина**")
-    for i, length in enumerate(lengths):
-        with cols[i + 1]:
-            st.write(f"**{length}**")
+    col1, col2, col3 = st.columns(3)
     
-    # Строки матрицы
-    for height in heights:
-        cols = st.columns(len(lengths) + 1)
-        
-        with cols[0]:
-            st.write(f"**{height}**")
-            
-        for i, length in enumerate(lengths):
-            with cols[i + 1]:
-                key = f"{height}_{length}"
-                value = st.session_state.entry_values.get(key, "")
-                
-                # Поле ввода с валидацией
-                new_value = st.text_input(
-                    "",
-                    value=value,
-                    key=key,
-                    label_visibility="collapsed",
-                    placeholder="0"
-                )
-                
-                # Валидация ввода
-                if new_value:
-                    if all(c in '0123456789+' for c in new_value):
-                        st.session_state.entry_values[key] = new_value
-                    else:
-                        st.error("Только цифры и +")
-                        st.session_state.entry_values[key] = ""
+    with col1:
+        entry_count = len(st.session_state.entry_values)
+        filled_count = len([v for v in st.session_state.entry_values.values() if v])
+        st.metric("Заполнено ячеек", f"{filled_count}/{entry_count}")
+    
+    with col2:
+        spec_count = len(st.session_state.spec_data) if hasattr(st.session_state.spec_data, '__len__') else 0
+        st.metric("Позиций в спецификации", spec_count)
+    
+    with col3:
+        st.metric("Версия", "2.0")
 
 if __name__ == "__main__":
     main()
