@@ -1,9 +1,10 @@
+# app.py
 import streamlit as st
 import pandas as pd
-import numpy as np
-from pathlib import Path
+from utils.data_loader import load_radiator_matrix
+from utils.calculator import calculate_brackets, parse_quantity
 
-# === КОНФИГУРАЦИЯ СТРАНИЦЫ ===
+# Настройка страницы
 st.set_page_config(
     page_title="RadiaTool Pro v2.0",
     page_icon="🔧",
@@ -11,90 +12,153 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# === ЗАГРУЗКА ДАННЫХ ===
-@st.cache_data
-def load_data():
-    """Загрузка данных из Excel файлов"""
-    try:
-        matrix_path = Path("data/Матрица.xlsx")
-        brackets_path = Path("data/Кронштейны.xlsx")
-        
-        if not matrix_path.exists():
-            st.error("❌ Файл 'Матрица.xlsx' не найден в папке data/")
-            st.stop()
-        if not brackets_path.exists():
-            st.error("❌ Файл 'Кронштейны.xlsx' не найден в папке data/")
-            st.stop()
-            
-        # Загрузка матрицы радиаторов
-        sheets = pd.read_excel(matrix_path, sheet_name=None, engine="openpyxl")
-        
-        # Загрузка кронштейнов
-        brackets_df = pd.read_excel(brackets_path, engine="openpyxl")
-        brackets_df['Артикул'] = brackets_df['Артикул'].astype(str).str.strip()
-        
-        # Предобработка данных матрицы
-        for name, df in sheets.items():
-            if name != "Кронштейны":
-                df['Артикул'] = df['Артикул'].astype(str).str.strip()
-                df['Вес, кг'] = pd.to_numeric(df['Вес, кг'], errors='coerce').fillna(0)
-                df['Объем, м3'] = pd.to_numeric(df['Объем, м3'], errors='coerce').fillna(0)
-                df['Мощность, Вт'] = pd.to_numeric(df['Мощность, Вт'], errors='coerce').fillna(0)
-                
-        return sheets, brackets_df
-        
-    except Exception as e:
-        st.error(f"❌ Ошибка загрузки данных: {str(e)}")
-        st.stop()
+# Загрузка CSS
+def load_css():
+    with open("assets/style.css") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# === ИНИЦИАЛИЗАЦИЯ СЕССИИ ===
-def init_session_state():
-    """Инициализация состояния сессии"""
-    if 'initialized' not in st.session_state:
-        st.session_state.initialized = True
+# Инициализация состояния сессии
+def initialize_session_state():
+    if 'entry_values' not in st.session_state:
         st.session_state.entry_values = {}
+    if 'connection' not in st.session_state:
         st.session_state.connection = "VK-правое"
+    if 'radiator_type' not in st.session_state:
         st.session_state.radiator_type = "10"
-        st.session_state.bracket_type = "Настенные кронштейны"
-        st.session_state.radiator_discount = 0.0
-        st.session_state.bracket_discount = 0.0
+    if 'bracket_type' not in st.session_state:
+        st.session_state.bracket_type = "Настенные"
+    if 'discounts' not in st.session_state:
+        st.session_state.discounts = {"radiators": 0, "brackets": 0}
+    if 'spec_data' not in st.session_state:
         st.session_state.spec_data = pd.DataFrame()
-        st.session_state.show_tooltips = True
 
-# === ГЛАВНЫЙ ИНТЕРФЕЙС ===
+# Главная функция
 def main():
-    init_session_state()
+    load_css()
+    initialize_session_state()
     
-    # Загрузка данных
-    sheets, brackets_df = load_data()
-    st.session_state.sheets = sheets
-    st.session_state.brackets_df = brackets_df
-    
-    # Заголовок приложения
+    # Заголовок
     st.title("🔧 RadiaTool Pro v2.0")
     st.markdown("---")
     
-    # Информация о загруженных данных
+    # Боковая панель
     with st.sidebar:
-        st.success(f"✅ Загружено листов: {len(sheets)}")
-        st.success(f"✅ Кронштейнов: {len(brackets_df)}")
+        st.image("assets/images/logo.png", width=200)  # Заглушка для лого
+        st.header("🔧 ПАРАМЕТРЫ ПОДБОРА")
+        
+        # Выбор подключения
+        connection = st.radio(
+            "Подключение:",
+            ["VK-правое", "VK-левое", "K-боковое"],
+            index=0
+        )
+        st.session_state.connection = connection
+        
+        # Выбор типа радиатора
+        if connection.startswith("VK"):
+            rad_types = ["10", "11", "30", "33"]
+        else:
+            rad_types = ["10", "11", "20", "21", "22", "30", "33"]
+            
+        radiator_type = st.selectbox("Тип радиатора:", rad_types)
+        st.session_state.radiator_type = radiator_type
+        
+        # Выбор крепления
+        bracket_type = st.radio(
+            "Крепление:",
+            ["Настенные", "Напольные", "Без"]
+        )
+        st.session_state.bracket_type = bracket_type
+        
+        # Скидки
+        st.subheader("Скидки:")
+        rad_discount = st.number_input("Радиаторы (%):", 0, 100, 0)
+        br_discount = st.number_input("Кронштейны (%):", 0, 100, 0)
+        st.session_state.discounts = {
+            "radiators": rad_discount,
+            "brackets": br_discount
+        }
         
         st.markdown("---")
-        st.markdown("### 🛠️ Быстрые действия")
+        st.header("📁 ИНСТРУМЕНТЫ")
         
-        if st.button("🔄 Сброс данных", use_container_width=True):
-            st.session_state.entry_values = {}
-            st.session_state.spec_data = pd.DataFrame()
-            st.rerun()
+        if st.button("📤 Импорт данных"):
+            st.switch_page("pages/03_📊_Импорт_данных.py")
             
-        if st.button("📋 Предпросмотр", use_container_width=True):
-            if len(st.session_state.entry_values) > 0:
-                st.switch_page("pages/02_📋_Спецификация.py")
-            else:
-                st.warning("Сначала заполните матрицу радиаторов")
+        if st.button("📥 Экспорт спецификации"):
+            st.switch_page("pages/02_📋_Спецификация.py")
+            
+        if st.button("📋 Предпросмотр"):
+            st.switch_page("pages/02_📋_Спецификация.py")
+            
+        if st.button("🗑️ Сброс", type="secondary"):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+        
+        st.markdown("---")
+        st.header("ℹ️ ИНФОРМАЦИЯ")
+        
+        if st.button("📖 Инструкция"):
+            st.switch_page("pages/04_ℹ️_Информация.py")
+            
+        if st.button("💰 Прайс-лист"):
+            st.info("Функция в разработке")
+            
+        if st.button("📄 Сертификаты"):
+            st.info("Функция в разработке")
+            
+        if st.button("🛠️ Поддержка"):
+            st.info("mt@laggartt.ru")
+
+    # Основная область - матрица радиаторов
+    st.header(f"Матрица радиаторов: {connection} {radiator_type}")
     
-    # Основной контент
-    st.info("🚀 **Добро пожаловать в RadiaTool Pro!** Выберите раздел в боковом меню для начала работы.")
+    # Загрузка матрицы
+    matrix_data = load_radiator_matrix(connection, radiator_type)
+    
+    # Создание матрицы ввода
+    heights = [300, 400, 500, 600, 900]
+    lengths = [400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]
+    
+    # Сетка для матрицы
+    cols = st.columns(len(lengths) + 1)
+    
+    # Заголовки столбцов (длины)
+    with cols[0]:
+        st.write("**Высота** → **Длина**")
+    for i, length in enumerate(lengths):
+        with cols[i + 1]:
+            st.write(f"**{length}**")
+    
+    # Строки матрицы
+    for height in heights:
+        cols = st.columns(len(lengths) + 1)
+        
+        with cols[0]:
+            st.write(f"**{height}**")
+            
+        for i, length in enumerate(lengths):
+            with cols[i + 1]:
+                key = f"{height}_{length}"
+                value = st.session_state.entry_values.get(key, "")
+                
+                # Поле ввода с валидацией
+                new_value = st.text_input(
+                    "",
+                    value=value,
+                    key=key,
+                    label_visibility="collapsed",
+                    placeholder="0"
+                )
+                
+                # Валидация ввода
+                if new_value:
+                    if all(c in '0123456789+' for c in new_value):
+                        st.session_state.entry_values[key] = new_value
+                    else:
+                        st.error("Только цифры и +")
+                        st.session_state.entry_values[key] = ""
 
 if __name__ == "__main__":
     main()

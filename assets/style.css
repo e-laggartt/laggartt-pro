@@ -1,0 +1,39 @@
+/* assets/style.css */
+/* Основные стили RadiaTool Pro */
+
+/* Улучшение читаемости */
+.main .block-container {
+    padding-top: 2rem;
+}
+
+/* Стили для матрицы */
+.stTextInput input {
+    text-align: center;
+    font-size: 0.9em;
+}
+
+/* Подсветка заполненных ячеек */
+.stTextInput input:not([value=""]) {
+    background-color: #f0f8ff;
+    border: 1px solid #955b67;
+}
+
+/* Боковая панель */
+.css-1d391kg {
+    background-color: #f8f9fa;
+}
+
+/* Заголовки */
+h1, h2, h3 {
+    color: #263168;
+}
+
+/* Кнопки */
+.stButton button {
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.stButton button:focus {
+    box-shadow: 0 0 0 0.2rem rgba(149, 91, 103, 0.25);
+}
