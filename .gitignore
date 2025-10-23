@@ -1,0 +1,138 @@
+# ============================================
+# PYTHON
+# ============================================
+
+# Файлы кэша Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Виртуальные окружения
+venv/
+env/
+ENV/
+.env
+.venv
+
+# PyCharm
+.idea/
+*.iws
+*.iml
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ============================================
+# ОПЕРАЦИОННЫЕ СИСТЕМЫ
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+ТЗ.docx
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ============================================
+# STREAMLIT
+# ============================================
+
+# Файлы с секретами (НИКОГДА не коммитить!)
+.streamlit/secrets.toml
+
+# ============================================
+# ДАННЫЕ И ФАЙЛЫ ПРОЕКТА
+# ============================================
+
+# Временные файлы данных
+*.tmp
+*.temp
+*.log
+
+# Резервные копии
+*.bak
+*.backup
+
+# Большие Excel файлы (РАСКОММЕНТИРОВАТЬ если файлы большие)
+# data/Матрица.xlsx
+# data/Кронштейны.xlsx
+
+# ============================================
+# СИСТЕМНЫЕ ФАЙЛЫ
+# ============================================
+
+# Файлы блокировки
+*.lock
+
+# Логи
+*.log
+logs/
+
+# Кэш
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# ============================================
+# РАЗНОЕ
+# ============================================
+
+# Файлы настроек IDE
+*.sublime-project
+*.sublime-workspace
+
+# Файлы редакторов
+*.swp
+*.swo
+*~
+
+# Минифицированные файлы
+*.min.js
+*.min.css
+
+# Архивы
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
