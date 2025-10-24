@@ -161,9 +161,48 @@ def get_selected_items():
                     'Артикул': art,
                     'Наименование': product['Наименование'],
                     'Количество': qty,
-                    'Лист': sheet_name  # Добавим для отладки
+                    'Вес, кг': product['Вес, кг'],
+                    'Лист': sheet_name
                 })
     return selected_items
+
+def get_brackets_for_radiator(radiator, bracket_type):
+    """Подбирает кронштейны для радиатора в зависимости от типа крепления"""
+    if bracket_type == "Без кронштейнов":
+        return []
+    
+    # Получаем вес радиатора
+    weight = radiator['Вес, кг']
+    
+    # Определяем тип кронштейна для поиска
+    if bracket_type == "Настенные кронштейны":
+        search_pattern = "настен"
+    else:  # Напольные кронштейны
+        search_pattern = "напольн"
+    
+    # Ищем подходящие кронштейны
+    suitable_brackets = []
+    
+    for _, bracket in brackets_df.iterrows():
+        bracket_name = str(bracket['Наименование']).lower()
+        
+        # Проверяем соответствие типу
+        if search_pattern in bracket_name:
+            # Проверяем максимальную нагрузку кронштейна
+            max_load = bracket.get('Макс_нагрузка', 0)
+            try:
+                max_load = float(max_load)
+                if max_load >= weight:
+                    suitable_brackets.append({
+                        'Артикул': bracket['Артикул'],
+                        'Наименование': bracket['Наименование'],
+                        'Макс_нагрузка': max_load,
+                        'Количество': radiator['Количество']  # Столько же сколько радиаторов
+                    })
+            except (ValueError, TypeError):
+                continue
+    
+    return suitable_brackets
 
 # === Компактный CSS с улучшениями ===
 st.markdown("""
@@ -179,11 +218,12 @@ st.markdown("""
     }
     
     .stHorizontalBlock {
-        gap: 0.5rem;
+        gap: 0.1rem;
     }
     
     div[data-testid="column"] {
-        padding: 1px;
+        padding: 0px;
+        margin: 0px;
     }
     
     h3 {
@@ -195,8 +235,9 @@ st.markdown("""
         font-weight: bold;
         text-align: center;
         font-size: 12px;
-        padding: 4px !important;
+        padding: 2px !important;
         background-color: #f8f9fa;
+        margin: 0px;
     }
     
     .matrix-corner {
@@ -209,6 +250,8 @@ st.markdown("""
         font-size: 14px !important;
         font-weight: 500 !important;
         height: 35px !important;
+        padding: 0px 2px !important;
+        margin: 0px !important;
     }
     
     /* Стиль для невалидного ввода */
@@ -227,6 +270,114 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+    }
+    
+    /* Стили для таблицы выбранных позиций */
+    .selected-items-table {
+        margin-top: 20px;
+        margin-bottom: 20px;
+    }
+    
+    /* Уменьшаем отступы между колонками */
+    [data-testid="column"] {
+        gap: 0px;
+    }
+    
+    /* Компактные отступы для матрицы */
+    .compact-matrix {
+        gap: 0px;
+        margin: 0px;
+        padding: 0px;
+    }
+    
+    /* Уменьшаем отступы в ячейках матрицы */
+    .matrix-cell {
+        padding: 0px !important;
+        margin: 0px !important;
+    }
+    
+    /* Уменьшаем отступы между строками матрицы */
+    .row {
+        margin: 0px !important;
+        padding: 0px !important;
+        gap: 0px !important;
+    }
+    
+    /* Уменьшаем вертикальные отступы */
+    .element-container {
+        margin: 0px !important;
+        padding: 0px !important;
+    }
+    
+    /* Компактные стили для всей матрицы */
+    .matrix-container {
+        margin: 0px !important;
+        padding: 0px !important;
+        gap: 0px !important;
+    }
+    
+    /* Убираем лишние отступы вокруг текстовых полей */
+    .stTextInput {
+        margin: 0px !important;
+        padding: 0px !important;
+    }
+    
+    /* Компактные заголовки */
+    .compact-header {
+        margin: 0px !important;
+        padding: 2px !important;
+    }
+    
+    /* СУПЕР КОМПАКТНЫЕ СТИЛИ ДЛЯ МАТРИЦЫ */
+    /* Уменьшаем расстояние между колонками матрицы до минимума */
+    [data-testid="column"] {
+        gap: 1px !important;
+        margin: 0px !important;
+        padding: 0px !important;
+    }
+    
+    /* Минимальные отступы для всех элементов матрицы */
+    .matrix-row {
+        margin: 0px !important;
+        padding: 0px !important;
+        gap: 1px !important;
+    }
+    
+    /* Ультра компактные поля ввода */
+    .stTextInput {
+        margin: 0px !important;
+        padding: 0px !important;
+        min-height: 0px !important;
+    }
+    
+    .stTextInput input {
+        height: 32px !important;
+        padding: 0px 1px !important;
+        margin: 0px !important;
+        border-radius: 2px !important;
+        border: 1px solid #ccc !important;
+    }
+    
+    /* Уменьшаем отступы между строками матрицы */
+    [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
+        gap: 1px !important;
+        margin: 0px !important;
+        padding: 0px !important;
+    }
+    
+    /* Компактные заголовки матрицы */
+    .matrix-header-cell {
+        padding: 1px 2px !important;
+        margin: 0px !important;
+        font-size: 11px !important;
+        min-height: 20px !important;
+    }
+    
+    /* Уменьшаем высоту строк матрицы */
+    .matrix-input-row {
+        min-height: 35px !important;
+        margin: 0px !important;
+        padding: 0px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -284,22 +435,30 @@ else:
     # Создаем матрицу как в tkinter версии
     st.markdown("---")
     
-    # Заголовок матрицы - высоты
-    cols = st.columns(len(heights) + 1)
-    with cols[0]:
-        st.markdown("<div class='matrix-corner'></div>", unsafe_allow_html=True)
+    # Создаем контейнер для заголовков высот
+    height_cols = st.columns(len(heights) + 1)
     
-    for j, h in enumerate(heights):
-        with cols[j + 1]:
-            st.markdown(f"<div class='matrix-header'>**{h}**</div>", unsafe_allow_html=True)
+    # Пустая ячейка в углу
+    with height_cols[0]:
+        st.markdown("")  # Пустое место
+    
+    # Подпись "Высота радиаторов, мм" над заголовками высот
+    for j in range(len(heights) + 1):
+        with height_cols[j]:
+            if j == 0:
+                # Первая колонка - подпись "Длина"
+                st.markdown("<div style='text-align: center; font-weight: bold; margin: 0; padding: 0;'></div>", unsafe_allow_html=True)
+            else:
+                # Остальные колонки - высоты
+                st.markdown(f"<div style='text-align: center; font-weight: bold; margin: 0; padding: 0;'>{heights[j-1]}</div>", unsafe_allow_html=True)
     
     # Тело матрицы - длины и ячейки ввода
     for i, length in enumerate(lengths):
         cols = st.columns(len(heights) + 1)
         
-        # Заголовок строки - длина
+        # Заголовок строки - длина (без звездочек)
         with cols[0]:
-            st.markdown(f"<div class='matrix-header'>**{length}**</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='matrix-header' style='margin: 0; padding: 0;'>{length}</div>", unsafe_allow_html=True)
         
         # Ячейки ввода
         for j, height in enumerate(heights):
@@ -403,35 +562,58 @@ with col2:
             0.0, 100.0, st.session_state.bracket_discount, 1.0,
             key="br_disc"
         )
-        st.session_state.bracket_discount = br_disc
+    st.session_state.bracket_discount = br_disc
 
 # === Информация о заполненных ячейках ===
 filled_cells = sum(1 for val in st.session_state.entry_values.values() if val and val != "0")
 if filled_cells > 0:
     st.success(f"✅ Заполнено ячеек: {filled_cells}")
     
-    # Кнопка для показа выбранных позиций
-    if st.button("📋 Показать выбранные позиции"):
-        st.session_state.show_selected_items = not st.session_state.show_selected_items
-    
-    # Показываем выбранные позиции если нажата кнопка
-    if st.session_state.show_selected_items:
-        selected_items = get_selected_items()
-        if selected_items:
-            st.markdown("### Выбранные позиции")
-            df = pd.DataFrame(selected_items)
-            # Убираем колонку "Лист" из отображения
-            if 'Лист' in df.columns:
-                df_display = df[['Артикул', 'Наименование', 'Количество']]
-            else:
-                df_display = df
-            st.dataframe(df_display, use_container_width=True)
-            
-            # Показываем итоговое количество
-            total_qty = df['Количество'].sum()
-            st.info(f"**Итого позиций:** {len(selected_items)}, **Общее количество:** {total_qty}")
-        else:
-            st.info("Нет выбранных позиций")
+    # === ВЫБРАННЫЕ ПОЗИЦИИ (всегда показываем) ===
+    selected_items = get_selected_items()
+    if selected_items:
+        st.markdown("### Выбранные позиции")
+        
+        # Создаем общий список всех позиций (радиаторы + кронштейны)
+        all_items = []
+        
+        # Добавляем радиаторы
+        for item in selected_items:
+            all_items.append({
+                'Артикул': item['Артикул'],
+                'Наименование': item['Наименование'],
+                'Количество': item['Количество'],
+                'Тип': 'Радиатор'
+            })
+        
+        # Добавляем кронштейны для каждого радиатора
+        for radiator in selected_items:
+            brackets = get_brackets_for_radiator(radiator, st.session_state.bracket_type)
+            for bracket in brackets:
+                all_items.append({
+                    'Артикул': bracket['Артикул'],
+                    'Наименование': bracket['Наименование'],
+                    'Количество': bracket['Количество'],
+                    'Тип': 'Кронштейн'
+                })
+        
+        # Создаем DataFrame для отображения
+        df = pd.DataFrame(all_items)
+        
+        # Группируем по артикулу и наименованию, суммируя количество
+        grouped_df = df.groupby(['Артикул', 'Наименование', 'Тип']).agg({
+            'Количество': 'sum'
+        }).reset_index()
+        
+        # Отображаем таблицу
+        st.dataframe(grouped_df, use_container_width=True)
+        
+        # Показываем итоговую информацию
+        total_radiators = sum(item['Количество'] for item in selected_items)
+        total_brackets = sum(bracket['Количество'] for radiator in selected_items 
+                           for bracket in get_brackets_for_radiator(radiator, st.session_state.bracket_type))
+        
+        st.info(f"**Итого позиций:** {len(grouped_df)}, **Радиаторов:** {total_radiators}, **Кронштейнов:** {total_brackets}")
 
 # === Кнопка сброса ===
 if st.button("🔄 Сбросить все"):

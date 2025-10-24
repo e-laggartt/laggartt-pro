@@ -3,6 +3,10 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 import numpy as np
+from datetime import datetime
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side
+import io
 
 # Загрузка данных
 @st.cache_data
@@ -506,6 +510,177 @@ def has_any_values():
             return True
     return False
 
+def create_excel_file(spec_data_with_total, total_power, total_weight, total_volume, total_sum):
+    """Создает Excel файл в памяти и возвращает байты"""
+    try:
+        # Создаем новую книгу Excel в памяти
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Спецификация"
+        
+        # Стили для форматирования
+        header_font = Font(bold=True, size=10, name='Arial')
+        normal_font = Font(size=10, name='Arial')
+        total_font = Font(bold=True, size=10, name='Arial')
+        info_font = Font(size=10, name='Arial')
+        
+        # Выравнивание как в эталоне - все по центру
+        center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        left_align = Alignment(horizontal='left', vertical='center')
+        
+        thin_border = Border(left=Side(style='thin'), 
+                           right=Side(style='thin'), 
+                           top=Side(style='thin'), 
+                           bottom=Side(style='thin'))
+        
+        # Заголовки столбцов
+        headers = [
+            "№",
+            "Артикул", 
+            "Наименование",
+            "Мощность, Вт",
+            "Цена, руб (с НДС)",
+            "Скидка, %", 
+            "Цена со скидкой, руб (с НДС)",
+            "Кол-во",
+            "Сумма, руб (с НДС)"
+        ]
+        
+        # Записываем заголовки
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = header_font
+            cell.alignment = center_align
+            cell.border = thin_border
+        
+        # Вспомогательная функция для безопасного форматирования чисел
+        def format_number(value, is_integer=False):
+            """Безопасное форматирование чисел"""
+            if pd.isna(value) or value == "" or value is None:
+                return ""
+            try:
+                # Преобразуем в число
+                if isinstance(value, str):
+                    num_value = float(value.replace(',', '.').replace(' ', ''))
+                else:
+                    num_value = float(value)
+                if is_integer:
+                    return f"{num_value:.0f}"
+                else:
+                    formatted = f"{num_value:,.2f}".replace(',', ' ').replace('.', ',')
+                    return formatted
+            except (ValueError, TypeError):
+                return str(value)
+        
+        # Записываем данные
+        for row_num, (index, row_data) in enumerate(spec_data_with_total.iterrows(), 2):
+            # Форматируем значения с проверкой типов
+            power_value = format_number(row_data['Мощность, Вт'], is_integer=True)
+            price_value = format_number(row_data['Цена, руб (с НДС)'])
+            discount_value = format_number(row_data['Скидка, %'], is_integer=True)
+            discounted_price_value = format_number(row_data['Цена со скидкой, руб (с НДС)'])
+            
+            # Особенная обработка для количества (может быть строкой с разделителем "/")
+            qty_value = row_data['Кол-во']
+            if str(qty_value).strip() == "Итого":
+                qty_value = ""
+            elif pd.notna(qty_value) and qty_value != "":
+                try:
+                    # Если это число - форматируем как целое
+                    if isinstance(qty_value, str):
+                        qty_num = float(qty_value.replace(',', '.').replace(' ', ''))
+                    else:
+                        qty_num = float(qty_value)
+                    qty_value = f"{qty_num:.0f}"
+                except (ValueError, TypeError):
+                    # Если это строка (например, "9 / 45"), оставляем как есть
+                    qty_value = str(qty_value)
+            else:
+                qty_value = ""
+            
+            sum_value = format_number(row_data['Сумма, руб (с НДС)'])
+            
+            values = [
+                row_data["№"],
+                row_data["Артикул"],
+                row_data["Наименование"],
+                power_value,
+                price_value,
+                discount_value,
+                discounted_price_value,
+                qty_value,
+                sum_value
+            ]
+            
+            for col_num, value in enumerate(values, 1):
+                cell = ws.cell(row=row_num, column=col_num, value=value)
+                
+                # В эталоне ВСЕ ячейки центрированы по горизонтали
+                if str(row_data["№"]) == "Итого":
+                    cell.font = total_font
+                    cell.alignment = center_align
+                else:
+                    cell.font = normal_font
+                    cell.alignment = center_align
+                
+                cell.border = thin_border
+        
+        # Настраиваем ширину столбцов как в эталоне
+        column_widths = {
+            'A': 8,    # №
+            'B': 15,   # Артикул
+            'C': 60,   # Наименование
+            'D': 12,   # Мощность, Вт
+            'E': 15,   # Цена, руб (с НДС)
+            'F': 10,   # Скидка, %
+            'G': 20,   # Цена со скидкой, руб (с НДС)
+            'H': 10,   # Кол-во
+            'I': 18    # Сумма, руб (с НДС)
+        }
+        
+        for col, width in column_widths.items():
+            ws.column_dimensions[col].width = width
+        
+        # Автоподбор высоты строк для заголовков
+        for row in ws.iter_rows(min_row=1, max_row=1):
+            for cell in row:
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        
+        # Добавляем информацию о весе и объеме как в эталоне
+        last_row = len(spec_data_with_total) + 2
+        
+        # Пустая строка
+        last_row += 1
+        
+        # Информация о весе
+        weight_cell = ws.cell(row=last_row, column=1, 
+                            value=f"Суммарный вес радиаторов без учета упаковки и кронштейнов- {total_weight} кг.")
+        weight_cell.font = info_font
+        weight_cell.alignment = left_align
+        
+        # Информация об объеме
+        volume_cell = ws.cell(row=last_row + 1, column=1, 
+                            value=f"Суммарный объем радиаторов без учета упаковки и кронштейнов- {total_volume} м3.")
+        volume_cell.font = info_font
+        volume_cell.alignment = left_align
+        
+        # Объединяем ячейки для информации о весе и объеме как в эталоне
+        ws.merge_cells(f'A{last_row}:I{last_row}')
+        ws.merge_cells(f'A{last_row + 1}:I{last_row + 1}')
+        
+        # Сохраняем файл в буфер памяти
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        return buffer
+        
+    except Exception as e:
+        st.error(f"Ошибка при создании Excel файла: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None
+
 # Интерфейс
 st.title("📋 Спецификация")
 
@@ -518,6 +693,8 @@ if "bracket_discount" not in st.session_state:
     st.session_state.bracket_discount = 0.0
 if "bracket_type" not in st.session_state:
     st.session_state.bracket_type = "Настенные кронштейны"
+if "show_download" not in st.session_state:
+    st.session_state.show_download = False
 
 # Проверяем есть ли заполненные значения
 has_values = has_any_values()
@@ -599,10 +776,23 @@ else:
         
         st.metric("Общая сумма спецификации", f"{total_sum:.2f} руб")
         
-        # Кнопка экспорта
-        if st.button("💾 Экспорт в Excel"):
-            # Здесь можно добавить функциональность экспорта
-            st.success("Функциональность экспорта будет добавлена в следующем обновлении")
+        # Кнопка для создания файла
+        if st.button("💾 Экспорт в Excel", use_container_width=True):
+            excel_buffer = create_excel_file(spec_data_with_total, total_power, total_weight, total_volume, total_sum)
+            if excel_buffer:
+                st.session_state.excel_buffer = excel_buffer
+                st.session_state.show_download = True
+                st.success("Файл готов к сохранению! Нажмите кнопку ниже.")
+        
+        # Показываем кнопку загрузки только если файл готов
+        if st.session_state.show_download and "excel_buffer" in st.session_state:
+            st.download_button(
+                label="📥 Сохранить файл как...",
+                data=st.session_state.excel_buffer,
+                file_name="Расчёт стоимости радиаторов METEOR.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
 
 # Кнопка сброса
 if st.button("🔄 Сбросить спецификацию"):
@@ -610,4 +800,7 @@ if st.button("🔄 Сбросить спецификацию"):
     st.session_state.radiator_discount = 0.0
     st.session_state.bracket_discount = 0.0
     st.session_state.bracket_type = "Настенные кронштейны"
+    st.session_state.show_download = False
+    if "excel_buffer" in st.session_state:
+        del st.session_state.excel_buffer
     st.rerun()
