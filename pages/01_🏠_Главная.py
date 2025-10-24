@@ -90,28 +90,29 @@ with col1:
     )
     st.session_state.radiator_type = rad_type
 
-with col2:
-    bracket = st.radio(
-        "Крепление",
-        ["Настенные кронштейны", "Напольные кронштейны", "Без кронштейнов"],
-        index=["Настенные кронштейны", "Напольные кронштейны", "Без кронштейнов"].index(st.session_state.bracket_type)
-    )
-    st.session_state.bracket_type = bracket
-
-    rad_disc = st.number_input(
-        "Скидка на радиаторы, %",
-        0.0, 100.0, st.session_state.radiator_discount, 1.0
-    )
-    br_disc = st.number_input(
-        "Скидка на кронштейны, %",
-        0.0, 100.0, st.session_state.bracket_discount, 1.0
-    )
-    st.session_state.radiator_discount = rad_disc
-    st.session_state.bracket_discount = br_disc
-
 # === Матрица ===
 st.markdown("### 📊 Матрица радиаторов")
 sheet_name = f"{st.session_state.connection} {st.session_state.radiator_type}"
+
+# Применяем CSS для уменьшения расстояний между ячейками
+st.markdown("""
+<style>
+    .compact-table {
+        margin: 0;
+        padding: 0;
+    }
+    .compact-table .stTextInput input {
+        margin: 1px;
+        padding: 2px 4px;
+        height: 30px;
+    }
+    .compact-col {
+        padding: 1px !important;
+        margin: 0 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 if sheet_name not in sheets:
     st.error(f"Лист '{sheet_name}' не найден")
 else:
@@ -121,14 +122,17 @@ else:
 
     # Заголовки
     cols = st.columns(len(heights) + 1)
-    cols[0].markdown("**длина\\высота**")
+    with cols[0]:
+        st.markdown("**длина\\высота**", help="Длина радиатора в мм")
     for j, h in enumerate(heights):
-        cols[j+1].markdown(f"**{h}**", unsafe_allow_html=True)
+        with cols[j+1]:
+            st.markdown(f"**{h}**", help=f"Высота радиатора {h} мм")
 
     has_any = any(st.session_state.entry_values.values())
     for i, l in enumerate(lengths):
         cols = st.columns(len(heights) + 1)
-        cols[0].markdown(f"**{l}**", unsafe_allow_html=True)
+        with cols[0]:
+            st.markdown(f"**{l}**", help=f"Длина радиатора {l} мм")
         for j, h in enumerate(heights):
             pattern = f"/{h}/{l}"
             match = df[df['Наименование'].str.contains(pattern, na=False)]
@@ -137,6 +141,7 @@ else:
                 key = (sheet_name, art)
                 current = st.session_state.entry_values.get(key, "")
                 with cols[j+1]:
+                    # Добавляем класс для компактного отображения
                     new_val = st.text_input(
                         "",
                         value=current,
@@ -147,3 +152,30 @@ else:
                         st.session_state.entry_values[key] = new_val
                     else:
                         st.session_state.entry_values[key] = ""
+
+# === Крепления и скидки (перенесены под матрицу) ===
+st.markdown("---")
+st.markdown("### 🔩 Дополнительные параметры")
+
+col1, col2 = st.columns(2)
+with col1:
+    bracket = st.radio(
+        "Крепление",
+        ["Настенные кронштейны", "Напольные кронштейны", "Без кронштейнов"],
+        index=["Настенные кронштейны", "Напольные кронштейны", "Без кронштейнов"].index(st.session_state.bracket_type)
+    )
+    st.session_state.bracket_type = bracket
+
+with col2:
+    rad_disc = st.number_input(
+        "Скидка на радиаторы, %",
+        0.0, 100.0, st.session_state.radiator_discount, 1.0,
+        help="Введите скидку в процентах для всех радиаторов"
+    )
+    br_disc = st.number_input(
+        "Скидка на кронштейны, %",
+        0.0, 100.0, st.session_state.bracket_discount, 1.0,
+        help="Введите скидку в процентах для кронштейнов"
+    )
+    st.session_state.radiator_discount = rad_disc
+    st.session_state.bracket_discount = br_disc
