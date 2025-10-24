@@ -76,6 +76,12 @@ with col1:
     st.session_state.connection = connection
 
     types = ["10", "11", "30", "33"] if connection == "VK-левое" else ["10", "11", "20", "21", "22", "30", "33"]
+    
+    # Проверяем, что текущее значение radiator_type доступно в списке types
+    if st.session_state.radiator_type not in types:
+        # Если нет, сбрасываем на первое доступное значение
+        st.session_state.radiator_type = types[0]
+    
     rad_type = st.radio(
         "Тип радиатора",
         types,
