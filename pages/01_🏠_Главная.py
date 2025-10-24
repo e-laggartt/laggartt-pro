@@ -63,7 +63,7 @@ def parse_quantity(val):
         return 0
 
 # === Управление параметрами ===
-st.markdown("### 📊 Матрица радиаторов")
+st.markdown("### Матрица подбора радиаторов")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -91,7 +91,7 @@ with col1:
     st.session_state.radiator_type = rad_type
 
 # === Матрица ===
-st.markdown()
+# st.markdown()
 sheet_name = f"{st.session_state.connection} {st.session_state.radiator_type}"
 
 # Применяем CSS для уменьшения расстояний между ячейками
