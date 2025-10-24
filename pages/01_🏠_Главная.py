@@ -57,8 +57,7 @@ if "last_validation_error" not in st.session_state:
     st.session_state.last_validation_error = None
 if "show_selected_items" not in st.session_state:
     st.session_state.show_selected_items = False
-if "entry_values" not in st.session_state:
-    st.session_state.entry_values = {}
+    
 
 # === Функции из tkinter приложения ===
 def validate_input(val):

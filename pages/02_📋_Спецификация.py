@@ -214,6 +214,10 @@ def calculate_total_weight_and_volume(spec_data, sheets):
         
         # Ищем радиатор в данных
         for sheet_name, data in sheets.items():
+            # Убеждаемся, что столбец Артикул строковый
+            data = data.copy()
+            data["Артикул"] = data["Артикул"].astype(str)
+            
             # Проверяем наличие артикула в текущем листе
             product = data[data["Артикул"].str.strip() == art]
             if not product.empty:
@@ -273,27 +277,53 @@ def prepare_spec_data(entry_values, sheets, brackets_df, radiator_discount, brac
 
     # Обработка радиаторов
     for key, value in entry_values.items():
+        # Пропускаем ключи полей ввода
+        if key.startswith('input_'):
+            continue
+            
         if value and value != "0":
             # Восстанавливаем sheet_name и art из ключа
-            parts = key.split('_', 2)
+            # Ключ имеет формат: "VK-правое_10_7724651404"
+            parts = key.split('_')
+            
+            # Нужно правильно разобрать части
             if len(parts) >= 3:
-                sheet_name = f"{parts[0]} {parts[1]}"
-                art = parts[2]
+                # Первая часть: "VK-правое" (может содержать дефис)
+                # Вторая часть: "10" (тип радиатора)
+                # Третья и последующие: артикул
+                connection_part = parts[0]
+                type_part = parts[1]
+                art = '_'.join(parts[2:])  # Артикул может содержать подчеркивания
+                
+                sheet_name = f"{connection_part} {type_part}"
                 
                 if sheet_name in sheets:
                     try:
-                        # Получаем значение из entry_values (может быть "1+3")
+                        # Получаем значение из entry_values
                         raw_value = value
                         # Вычисляем сумму только при формировании спецификации
                         qty_radiator = parse_quantity(raw_value)
-                        mask = sheets[sheet_name]['Артикул'] == art
-                        product = sheets[sheet_name].loc[mask]
+                        
+                        # Ищем продукт по артикулу
+                        data = sheets[sheet_name].copy()
+                        data['Артикул'] = data['Артикул'].astype(str).str.strip()
+                        product = data[data['Артикул'] == art]
                         
                         if product.empty:
-                            continue
+                            # Пробуем найти без учета подчеркиваний
+                            art_clean = art.replace('_', '')
+                            product = data[data['Артикул'].str.replace('_', '') == art_clean]
+                            if product.empty:
+                                continue
                         
                         product = product.iloc[0]
-                        radiator_type = sheet_name.split()[-1]
+                        radiator_type = type_part
+                        
+                        # Проверяем наличие цены
+                        if 'Цена, руб' not in product:
+                            st.error(f"В продукте {art} отсутствует цена")
+                            continue
+                            
                         price = float(product['Цена, руб'])
                         # Получаем скидку из переменной интерфейса
                         discount = float(radiator_discount) if radiator_discount else 0.0
@@ -301,9 +331,19 @@ def prepare_spec_data(entry_values, sheets, brackets_df, radiator_discount, brac
                         total = round(discounted_price * qty_radiator, 2)
                         
                         # Извлекаем параметры для сортировки из наименования
-                        name_parts = product['Наименование'].split('/')
-                        height = int(name_parts[-2].replace('мм', '').strip())
-                        length = int(name_parts[-1].replace('мм', '').strip().split()[0])
+                        name_parts = str(product['Наименование']).split('/')
+                        if len(name_parts) >= 2:
+                            try:
+                                height_str = name_parts[-2].replace('мм', '').strip()
+                                length_str = name_parts[-1].replace('мм', '').strip().split()[0]
+                                height = int(height_str) if height_str.isdigit() else 0
+                                length = int(length_str) if length_str.isdigit() else 0
+                            except:
+                                height = 0
+                                length = 0
+                        else:
+                            height = 0
+                            length = 0
                         
                         # Определяем Вид подключения для сортировки
                         connection_type = "VK" if "VK" in sheet_name else "K"
@@ -319,13 +359,13 @@ def prepare_spec_data(entry_values, sheets, brackets_df, radiator_discount, brac
                             "Кол-во": int(qty_radiator),
                             "Сумма, руб (с НДС)": float(total),
                             "ConnectionType": connection_type,  # Для группировки VK/K
-                            "RadiatorType": int(radiator_type),  # Тип радиатора (10, 11, 20 и т.д.)
+                            "RadiatorType": int(radiator_type) if radiator_type.isdigit() else 0,  # Тип радиатора
                             "Height": height,  # Высота для сортировки
                             "Length": length  # Длина для сортировки
                         })
 
                         # Обработка кронштейнов
-                        if bracket_type != "Без кронштейнов":
+                        if bracket_type != "Без кронштейнов" and height > 0 and length > 0:
                             brackets = calculate_brackets(
                                 radiator_type=radiator_type,
                                 length=length,
@@ -335,15 +375,18 @@ def prepare_spec_data(entry_values, sheets, brackets_df, radiator_discount, brac
                             )
                             
                             for art_bracket, qty_bracket in brackets:
-                                mask_bracket = brackets_df['Артикул'] == art_bracket
-                                bracket_info = brackets_df.loc[mask_bracket]
+                                # ИСПРАВЛЕНО: правильное название столбца 'Артикул'
+                                brackets_df_local = brackets_df.copy()
+                                brackets_df_local['Артикул'] = brackets_df_local['Артикул'].astype(str).str.strip()
+                                mask_bracket = brackets_df_local['Артикул'] == art_bracket
+                                bracket_info = brackets_df_local.loc[mask_bracket]
                                 
                                 if bracket_info.empty:
                                     continue
                                     
-                                key = art_bracket.strip()
-                                if key not in brackets_temp:
-                                    brackets_temp[key] = {
+                                key_bracket = art_bracket.strip()
+                                if key_bracket not in brackets_temp:
+                                    brackets_temp[key_bracket] = {
                                         "Артикул": art_bracket,
                                         "Наименование": str(bracket_info.iloc[0]['Наименование']),
                                         "Цена, руб (с НДС)": float(bracket_info.iloc[0]['Цена, руб']),
@@ -357,11 +400,11 @@ def prepare_spec_data(entry_values, sheets, brackets_df, radiator_discount, brac
                                 discounted_price_bracket = round(price_bracket * (1 - discount_bracket / 100), 2)
                                 qty_total = qty_bracket
                                 
-                                brackets_temp[key]["Кол-во"] += int(qty_total)
-                                brackets_temp[key]["Сумма, руб (с НДС)"] += round(discounted_price_bracket * qty_total, 2)
+                                brackets_temp[key_bracket]["Кол-во"] += int(qty_total)
+                                brackets_temp[key_bracket]["Сумма, руб (с НДС)"] += round(discounted_price_bracket * qty_total, 2)
 
                     except Exception as e:
-                        print(f"Ошибка в данных радиатора: {str(e)}")
+                        st.error(f"Ошибка в данных радиатора {art}: {str(e)}")
                         continue
 
     # Формирование данных кронштейнов
@@ -384,19 +427,22 @@ def prepare_spec_data(entry_values, sheets, brackets_df, radiator_discount, brac
             })
 
     # Сортировка радиаторов: сначала VK, потом K, затем по типу, высоте, длине
-    radiator_data_sorted = sorted(
-        radiator_data, 
-        key=lambda x: (
-            0 if x["ConnectionType"] == "VK" else 1,  # Сначала VK, потом K
-            x["RadiatorType"],  # Затем по типу радиатора (10, 11, 20...)
-            x["Height"],  # Затем по высоте
-            x["Length"]  # Затем по длине
+    if radiator_data:
+        radiator_data_sorted = sorted(
+            radiator_data, 
+            key=lambda x: (
+                0 if x["ConnectionType"] == "VK" else 1,  # Сначала VK, потом K
+                x["RadiatorType"],  # Затем по типу радиатора (10, 11, 20...)
+                x["Height"],  # Затем по высоте
+                x["Length"]  # Затем по длине
+            )
         )
-    )
-    
-    # Обновляем номера после сортировки
-    for i, item in enumerate(radiator_data_sorted, 1):
-        item["№"] = i
+        
+        # Обновляем номера после сортировки
+        for i, item in enumerate(radiator_data_sorted, 1):
+            item["№"] = i
+    else:
+        radiator_data_sorted = []
     
     # Объединение данных (отсортированные радиаторы + кронштейны)
     combined_data = radiator_data_sorted + bracket_data
@@ -419,9 +465,22 @@ def prepare_spec_data(entry_values, sheets, brackets_df, radiator_discount, brac
 
 def add_total_row(spec_data):
     """Добавляет итоговую строку к данным спецификации"""
+    if spec_data.empty:
+        return spec_data
+        
     total_sum = spec_data["Сумма, руб (с НДС)"].sum()
-    total_qty_radiators = sum(spec_data[~spec_data["Наименование"].str.contains("Кронштейн", na=False)]["Кол-во"])
-    total_qty_brackets = sum(spec_data[spec_data["Наименование"].str.contains("Кронштейн", na=False)]["Кол-во"])
+    
+    # Считаем количество радиаторов и кронштейнов
+    total_qty_radiators = 0
+    total_qty_brackets = 0
+    
+    for index, row in spec_data.iterrows():
+        if row["№"] == "Итого":
+            continue
+        if "Кронштейн" in str(row["Наименование"]):
+            total_qty_brackets += row["Кол-во"]
+        else:
+            total_qty_radiators += row["Кол-во"]
     
     total_row = pd.DataFrame([{
         "№": "Итого",
@@ -437,6 +496,16 @@ def add_total_row(spec_data):
     
     return pd.concat([spec_data, total_row], ignore_index=True)
 
+def has_any_values():
+    """Проверяет есть ли заполненные значения"""
+    for key, value in st.session_state.entry_values.items():
+        # Пропускаем ключи полей ввода (они начинаются с "input_")
+        if key.startswith('input_'):
+            continue
+        if value and value != "0" and value != "":
+            return True
+    return False
+
 # Интерфейс
 st.title("📋 Спецификация")
 
@@ -451,11 +520,13 @@ if "bracket_type" not in st.session_state:
     st.session_state.bracket_type = "Настенные кронштейны"
 
 # Проверяем есть ли заполненные значения
-has_values = any(val and val != "0" for val in st.session_state.entry_values.values())
+has_values = has_any_values()
 
 if not has_values:
     st.info("Заполните матрицу на странице 'Главная', чтобы сформировать спецификацию.")
 else:
+    st.success(f"✅ Найдено заполненных позиций: {len([v for k, v in st.session_state.entry_values.items() if not k.startswith('input_') and v and v != '0'])}")
+    
     # Подготавливаем данные спецификации
     spec_data = prepare_spec_data(
         st.session_state.entry_values,
@@ -467,27 +538,45 @@ else:
     )
     
     if spec_data.empty:
-        st.warning("Нет данных для отображения.")
+        st.warning("Нет данных для отображения в спецификации.")
+        st.write("### Отладочная информация:")
+        st.write("**Все entry_values:**", st.session_state.entry_values)
+        
+        # Показываем какие листы доступны
+        st.write("**Доступные листы:**", list(sheets.keys()))
+        
+        # Проверяем конкретные артикулы
+        for key, value in st.session_state.entry_values.items():
+            if key.startswith('input_'):
+                continue
+            if value and value != "0":
+                parts = key.split('_')
+                if len(parts) >= 3:
+                    sheet_name = f"{parts[0]} {parts[1]}"
+                    art = '_'.join(parts[2:])
+                    st.write(f"**Проверка {art} в {sheet_name}:**")
+                    if sheet_name in sheets:
+                        data = sheets[sheet_name].copy()
+                        data['Артикул'] = data['Артикул'].astype(str).str.strip()
+                        product = data[data['Артикул'] == art]
+                        if not product.empty:
+                            st.write(f"✅ Найден: {product.iloc[0]['Наименование']}")
+                        else:
+                            st.write(f"❌ Не найден в листе {sheet_name}")
+                            # Покажем доступные артикулы в этом листе
+                            st.write(f"Доступные артикулы в {sheet_name}:", data['Артикул'].head(10).tolist())
+                    else:
+                        st.write(f"❌ Лист {sheet_name} не найден")
     else:
         # Добавляем итоговую строку
         spec_data_with_total = add_total_row(spec_data)
         
         # Отображаем таблицу
+        st.markdown("### Спецификация оборудования")
         st.dataframe(
             spec_data_with_total,
             use_container_width=True,
-            hide_index=True,
-            column_config={
-                "№": st.column_config.TextColumn("№", width="small"),
-                "Артикул": st.column_config.TextColumn("Артикул", width="small"),
-                "Наименование": st.column_config.TextColumn("Наименование", width="large"),
-                "Мощность, Вт": st.column_config.NumberColumn("Мощность, Вт", format="%.2f", width="small"),
-                "Цена, руб (с НДС)": st.column_config.NumberColumn("Цена, руб (с НДС)", format="%.2f", width="medium"),
-                "Скидка, %": st.column_config.NumberColumn("Скидка, %", format="%.2f", width="small"),
-                "Цена со скидкой, руб (с НДС)": st.column_config.NumberColumn("Цена со скидкой, руб (с НДС)", format="%.2f", width="medium"),
-                "Кол-во": st.column_config.NumberColumn("Кол-во", format="%d", width="small"),
-                "Сумма, руб (с НДС)": st.column_config.NumberColumn("Сумма, руб (с НДС)", format="%.2f", width="medium")
-            }
+            hide_index=True
         )
         
         # Расчет итоговых значений
@@ -496,6 +585,7 @@ else:
         total_sum = spec_data["Сумма, руб (с НДС)"].sum()
         
         # Отображаем итоговую информацию
+        st.markdown("### Итоговые показатели")
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -513,3 +603,11 @@ else:
         if st.button("💾 Экспорт в Excel"):
             # Здесь можно добавить функциональность экспорта
             st.success("Функциональность экспорта будет добавлена в следующем обновлении")
+
+# Кнопка сброса
+if st.button("🔄 Сбросить спецификацию"):
+    st.session_state.entry_values.clear()
+    st.session_state.radiator_discount = 0.0
+    st.session_state.bracket_discount = 0.0
+    st.session_state.bracket_type = "Настенные кронштейны"
+    st.rerun()
