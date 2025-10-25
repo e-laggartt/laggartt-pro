@@ -1,5 +1,9 @@
 # app.py
 import streamlit as st
+import os
+
+# Отключаем file watcher чтобы избежать ошибки inotify
+os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
 
 st.set_page_config(
     page_title="RadiaTool Pro v2.0",
